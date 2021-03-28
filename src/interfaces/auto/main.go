@@ -1,3 +1,5 @@
+// +build auto
+
 /**
  * Copyright (C) 2021 Yi Fan Song <yfsong00@gmail.com>
  *
@@ -17,9 +19,8 @@
  * along with space-kraken.  If not, see <https://www.gnu.org/licenses/>.
  **/
 
-package api
+package main
 
-// GameStatus is the struct for the get status response
-type GameStatus struct {
-	Status string `json:"status"`
+func main() {
+
 }

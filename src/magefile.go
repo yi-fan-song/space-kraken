@@ -23,27 +23,30 @@ package main
 
 import (
 	"fmt"
+	"io/fs"
 	"os"
 	"os/exec"
+	"path/filepath"
+	"strings"
 
 	"github.com/magefile/mage/mg" // mg contains helpful utility functions, like Deps
 )
 
 // Default target to run when none is specified
 // If not set, running mage will list available targets
-var Default = Run
+var Default = Build
 
 // A build step that requires additional params, or platform specific steps for example
 func Build() error {
 	mg.Deps(InstallDeps)
 	fmt.Println("Building...")
-	cmd := exec.Command("go", "build", "-o", "main", ".")
+	cmd := exec.Command("go", "build", "-o", "./bin/main", "-tags=terminal", "./interfaces/terminal")
 	return cmd.Run()
 }
 
 // Run the program after installing deps
 func Run() error {
-	cmd := exec.Command("go", "run", ".")
+	cmd := exec.Command("go", "run", "-tags=terminal", "./interfaces/terminal")
 	return cmd.Run()
 }
 
@@ -65,4 +68,20 @@ func InstallDeps() error {
 func Clean() {
 	fmt.Println("Cleaning...")
 	os.RemoveAll("./bin/main")
+
+	subDirToSkip := ".vscode"
+	filepath.Walk(".", func(path string, info fs.FileInfo, err error) error {
+		if err != nil {
+			fmt.Printf("prevent panic by handling failure accessing a path %q: %v\n", path, err)
+			return err
+		}
+		if info.IsDir() && info.Name() == subDirToSkip {
+			return filepath.SkipDir
+		}
+		if strings.HasSuffix(info.Name(), ".log") {
+			fmt.Printf("Removing %s", path)
+			os.Remove(path)
+		}
+		return nil
+	})
 }

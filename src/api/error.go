@@ -19,7 +19,25 @@
 
 package api
 
-// GameStatus is the struct for the get status response
-type GameStatus struct {
-	Status string `json:"status"`
+import "fmt"
+
+type ResponseError struct {
+	Error struct {
+		Message string `json:"message"`
+		Code    int    `json:"code"`
+	} `json:"error"`
+}
+
+func (err ResponseError) ToClientError() ClientError {
+	return ClientError{
+		Name: fmt.Sprint(err.Error.Code) + ": " + err.Error.Message,
+	}
+}
+
+type ClientError struct {
+	Name string
+}
+
+func (err ClientError) Error() string {
+	return err.Name
 }

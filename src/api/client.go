@@ -23,9 +23,6 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
-	"os"
-	"strings"
-	"time"
 
 	"github.com/yi-fan-song/space-kraken/logger"
 )
@@ -41,17 +38,6 @@ type Client struct {
 
 // New creates a new api client
 func New(token string, username string, httpClient *http.Client, l logger.Logger) Client {
-
-	if httpClient == nil {
-		httpClient = &http.Client{
-			Timeout: time.Minute,
-		}
-	}
-
-	if l == nil {
-		l = logger.New(os.Stdout)
-	}
-
 	return Client{
 		token:      token,
 		username:   username,
@@ -62,7 +48,7 @@ func New(token string, username string, httpClient *http.Client, l logger.Logger
 
 // GetStatus gets the status of the game
 func (c Client) GetStatus() (status GameStatus, err error) {
-	c.l.Log("Fetching game Status...")
+	c.l.Info("Fetching game Status...")
 
 	url := "https://api.spacetraders.io/game/status"
 
@@ -97,33 +83,29 @@ func (c Client) GetStatus() (status GameStatus, err error) {
 		return
 	}
 
-	c.l.Log("Game status fetched:", status.Status)
+	c.l.Info("Game status fetched:", status.Status)
 	return
 }
 
-// CreateAccount creates an account with username
-func (c Client) CreateAccount(username string) (token string, err error) {
-	c.l.Logf("Creating an account with username %s...", username)
+// Do "do"es a request
+func (c Client) Do(url string, method string, body io.Reader, v interface{}) (err error) {
+	c.l.Infof("Making a %s request to url: %s", method, url)
 
-	url := "https://api.spacetraders.io/users/:username/token"
-	url = strings.Replace(url, ":username", username, 1)
-
-	req, err := http.NewRequest(http.MethodPost, url, nil)
+	var req *http.Request
+	req, err = http.NewRequest(method, url, body)
 	if err != nil {
-		c.l.Error("Creating account failed: ", err)
 		return
 	}
 
-	res, err := c.httpClient.Do(req)
+	var res *http.Response
+	res, err = c.httpClient.Do(req)
 	if err != nil {
-		c.l.Error("Creating account failed: ", err)
 		return
 	}
 
-	buf := make([]byte, 5000)
-	n, err := res.Body.Read(buf)
-	if err != nil && err != io.EOF {
-		c.l.Error("Creating account failed: ", err)
+	var buf []byte
+	buf, err = io.ReadAll(res.Body)
+	if err != nil {
 		return
 	}
 	defer func() {
@@ -133,14 +115,17 @@ func (c Client) CreateAccount(username string) (token string, err error) {
 		}
 	}()
 
-	user := CreateUser{}
-	err = json.Unmarshal(buf[:n], &user)
+	var apiErr ResponseError
+	err = json.Unmarshal(buf, &apiErr)
 	if err != nil {
-		c.l.Error("Fetching failed: ", err)
 		return
 	}
 
-	token = user.Token
-	c.l.Logf("Created account with username %s...", username)
+	if apiErr.Error.Code != 0 {
+		err = apiErr.ToClientError()
+		return
+	}
+
+	err = json.Unmarshal(buf, v)
 	return
 }

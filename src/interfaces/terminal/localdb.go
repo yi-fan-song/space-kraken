@@ -1,3 +1,5 @@
+// +build terminal
+
 /**
  * Copyright (C) 2021 Yi Fan Song <yfsong00@gmail.com>
  *
@@ -17,9 +19,36 @@
  * along with space-kraken.  If not, see <https://www.gnu.org/licenses/>.
  **/
 
-package api
+package main
 
-// GameStatus is the struct for the get status response
-type GameStatus struct {
-	Status string `json:"status"`
+import (
+	"time"
+
+	"gorm.io/driver/sqlite"
+	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
+)
+
+var db *gorm.DB
+
+type User struct {
+	gorm.Model
+	Username string
+	Token    string
+}
+
+func dbInit() {
+	gnormLogger := logger.New(l, logger.Config{
+		SlowThreshold: 200 * time.Millisecond,
+		LogLevel:      logger.Warn,
+		Colorful:      settings.Logging.Color,
+	})
+
+	var err error
+	db, err = gorm.Open(sqlite.Open(dataPath), &gorm.Config{Logger: gnormLogger})
+	if err != nil {
+		panic("failed to connect database")
+	}
+
+	db.AutoMigrate(&User{})
 }

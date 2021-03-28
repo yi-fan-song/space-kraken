@@ -24,8 +24,8 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
-	"io/ioutil"
 	"net/http"
 	"os"
 	"time"
@@ -35,36 +35,73 @@ import (
 	"github.com/yi-fan-song/space-kraken/logger"
 )
 
+const (
+	configDir  = "/etc/space-kraken"
+	configPath = configDir + "/settings.toml"
+	dataPath   = configDir + "/data"
+	logPath    = configDir + "/latest.log"
+)
+
+var (
+	l logger.Logger
+
+	httpClient http.Client
+	gameClient api.Client
+
+	settings Settings
+)
+
 // Settings is struct for parsing settings
 type Settings struct {
-	User struct {
-		Token string `json:"token"`
-		Name  string `json:"name"`
-	} `json:"user"`
+	Logging struct {
+		Color bool `json:"color"`
+	} `json:"logging"`
 }
-
-var l logger.Logger
-var httpClient http.Client
-var gameClient api.Client
-
-var settings Settings
 
 func init() {
-	l = logger.New(ioutil.Discard)
-	// l = logger.New(os.Stdout)
-
-	if err := loadSettings("settings.toml", &settings); err != nil {
-		l.Error(err)
-		os.Exit(1)
+	if _, err := os.Stat(configDir); os.IsNotExist(err) {
+		os.Mkdir(configDir, 755)
 	}
 
+	err := loadSettings(configPath, &settings)
+	if err != nil {
+		panic(err)
+	}
+
+	logfile := createLogfile(logPath)
+	l = logger.New(logfile, logfile, logger.Config{
+		ErrorColor: logger.Red,
+		InfoColor:  logger.Cyan,
+		UseColor:   settings.Logging.Color,
+	})
+
 	httpClient = http.Client{Timeout: time.Minute}
-	gameClient = api.New(settings.User.Token, settings.User.Name, &httpClient, l)
+	gameClient = api.New("", "", &httpClient, l)
+
+	dbInit()
 }
 
-func loadSettings(filename string, settings *Settings) error {
-	f, err := os.ReadFile(filename)
+func createLogfile(filename string) *os.File {
+	f, err := os.OpenFile(filename, os.O_CREATE|os.O_RDWR|os.O_APPEND, 755)
 	if err != nil {
+		fmt.Printf("Could not create log file: %s.\n", err)
+		return nil
+	}
+
+	return f
+}
+
+func loadSettings(path string, settings *Settings) error {
+	f, err := os.ReadFile(path)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			f, err := os.Create(path)
+			if err != nil {
+				return err
+			}
+			f.Chmod(644)
+			return loadSettings(f.Name(), settings)
+		}
 		return err
 	}
 

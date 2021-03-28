@@ -20,106 +20,100 @@
 package logger
 
 import (
+	"fmt"
 	"io"
-	"io/ioutil"
 	"time"
+)
 
-	"github.com/fatih/color"
+const (
+	Reset   = "\033[0m"
+	Red     = "\033[31m"
+	Green   = "\033[32m"
+	Yellow  = "\033[33m"
+	Blue    = "\033[34m"
+	Magenta = "\033[35m"
+	Cyan    = "\033[36m"
+	White   = "\033[37m"
 )
 
 // Logger is the interface of the logger
 type Logger interface {
-	// Log writes the message to the output
-	//
-	// messages are formatted using fmt.Fprintln
-	Log(a ...interface{}) (n int, err error)
-
-	// Log writes the message to the output
+	// Printf writes the message to the output
 	//
 	// messages are formatted using fmt.Fprintf
-	Logf(format string, a ...interface{}) (n int, err error)
+	Printf(format string, a ...interface{})
+
+	// Info writes the message to the output
+	Info(...interface{})
+
+	// Infof writes teh message to output with format
+	Infof(format string, a ...interface{})
 
 	// Error writes the message to the output with error colors
 	//
 	// messages are formatted using fmt.Fprintln
-	Error(a ...interface{}) (n int, err error)
+	Error(...interface{})
+}
+
+type Config struct {
+	InfoColor  string
+	ErrorColor string
+	UseColor   bool
 }
 
 type logger struct {
-	prependTime bool
+	outWriter io.Writer
+	errWriter io.Writer
 
-	writer     io.Writer
-	logColor   *color.Color
-	errorColor *color.Color
+	infoFormat string
+	errFormat  string
 }
 
 // New creates a new Logger.
 //
-// output can be nil, in which case the logs will be discarded
-func New(output io.Writer) Logger {
-	l := logger{}
+// writers can be nil, in which case it will use stdout and stderr
+func New(outWriter io.Writer, errWriter io.Writer, config Config) Logger {
+	var (
+		infoFormat = "[%s] %s\n"
+		errFormat  = "[%s] ERROR: %s\n"
+	)
 
-	if output != nil {
-		l.writer = output
-	} else {
-		l.writer = ioutil.Discard
+	if config.UseColor {
+		infoFormat = "[%s]" + config.InfoColor + "%s" + Reset + "\n"
+		errFormat = "[%s]" + config.ErrorColor + "ERROR: %s" + Reset + "\n"
 	}
 
-	l.logColor = color.New(color.FgCyan)
-	l.errorColor = color.New(color.FgRed)
-	l.prependTime = true
-
-	return &l
-}
-
-func (l logger) Log(a ...interface{}) (n int, err error) {
-	if l.prependTime {
-		n, err = prependTime(l.writer, l.logColor)
-		if err != nil {
-			return
-		}
+	return &logger{
+		outWriter:  outWriter,
+		errWriter:  errWriter,
+		infoFormat: infoFormat,
+		errFormat:  errFormat,
 	}
-
-	n2, err := l.logColor.Fprintln(l.writer, a...)
-	n += n2
-
-	return
 }
 
-func (l logger) Logf(format string, a ...interface{}) (n int, err error) {
-	if l.prependTime {
-		n, err = prependTime(l.writer, l.logColor)
-		if err != nil {
-			return
-		}
-	}
-
-	n2, err := l.logColor.Fprintf(l.writer, format, a...)
-	n += n2
-
-	return
+func (l logger) Printf(format string, a ...interface{}) {
+	fmt.Fprintf(l.outWriter, l.infoFormat, getTime(), fmt.Sprintf(format, a...))
 }
 
-func (l logger) Error(a ...interface{}) (n int, err error) {
-	if l.prependTime {
-		n, err = prependTime(l.writer, l.errorColor)
-		if err != nil {
-			return
-		}
-	}
-
-	n2, err := l.errorColor.Fprintln(l.writer, a...)
-	n += n2
-
-	return
+func (l logger) Info(a ...interface{}) {
+	fmt.Fprintf(l.outWriter, l.infoFormat, getTime(), fmt.Sprint(a...))
 }
 
-func prependTime(w io.Writer, color *color.Color) (int, error) {
-	loc, err := time.LoadLocation("EST")
+func (l logger) Infof(format string, a ...interface{}) {
+	fmt.Fprintf(l.outWriter, l.infoFormat, getTime(), fmt.Sprintf(format, a...))
+}
+
+func (l logger) Error(a ...interface{}) {
+	fmt.Fprintf(l.errWriter, l.errFormat, getTime(), fmt.Sprint(a...))
+}
+
+func getTime() string {
+	loc, err := time.LoadLocation("America/Toronto")
 	if err != nil {
-		return 0, err
+		fmt.Printf("Failed to load location: %s\n", err.Error())
+		return ""
 	}
 	t := time.Now().In(loc)
 
-	return color.Fprintf(w, "[%s] ", t.Format("Mon Jan _2 2006 15:04:05 MST"))
+	return t.Format("Mon Jan _2 2006 15:04:05 MST")
 }

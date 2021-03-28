@@ -23,9 +23,12 @@ package main
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
+
+	"gorm.io/gorm"
 )
 
 func startPrompts() {
@@ -43,9 +46,13 @@ func startPrompts() {
 }
 
 func checkAccount() {
-	if settings.User.Name == "ERR_NO_NAME" || settings.User.Token == "ERR_NO_TOKEN" {
+	var user User
+	result := db.First(&user)
+	if errors.Is(result.Error, gorm.ErrRecordNotFound) {
 		fmt.Println("You haven't set an username and/or token, you can create an account by typing \"account create <username>\"")
 		fmt.Println("If you have an account, you can log in with \"account login <username> <token>\"")
+	} else {
+		fmt.Printf("You've logged in as %s\n", user.Username)
 	}
 }
 
@@ -72,12 +79,74 @@ func handleCmd(cmd []string) {
 				break
 			}
 
+			token, err := gameClient.CreateAccount(cmd[2])
+			if err != nil {
+				fmt.Println("Could not create that account: ", err)
+				break
+			}
+
+			var user User
+			r := db.First(&user)
+			if errors.Is(r.Error, gorm.ErrRecordNotFound) {
+				db.Create(&User{
+					Username: cmd[2],
+					Token:    token,
+				})
+				fmt.Printf("The account was saved, you are now logged in as %s.\n", cmd[2])
+			} else {
+				ret := promptForYes(
+					fmt.Sprintf("You already have account with username %s, do you want to overwrite it?", user.Username),
+					nil,
+				)
+				if ret {
+					db.Model(&user).Updates(User{
+						Username: cmd[2],
+						Token:    token,
+					})
+					fmt.Printf("The account was saved, you are now logged in as %s.\n", cmd[2])
+				} else {
+					fmt.Println("The account was created, but not saved, you should save the token.")
+				}
+			}
+
+			fmt.Printf("Created account! Username: %s Token: %s\n", cmd[2], token)
+			fmt.Println("Make sure to keep that token safe")
+
 		case "login":
 			if len(cmd[2:]) < 2 {
 				fmt.Println("There are not enough arguments")
 				break
 			}
 		}
+	case "exit":
+		os.Exit(0)
 	}
+}
 
+func promptForYes(message string, callback func()) bool {
+	fmt.Print(message)
+
+	scanner := bufio.NewScanner(os.Stdin)
+	scanner.Scan()
+	text := scanner.Text()
+	args := strings.Split(text, " ")
+	answer := strings.ToLower(args[0])
+
+	if answer == "yes" || answer == "y" {
+		if callback != nil {
+			callback()
+		}
+		return true
+	} else {
+		return false
+	}
+}
+
+func promptAndWait(message string) []string {
+	fmt.Print(message)
+
+	scanner := bufio.NewScanner(os.Stdin)
+	scanner.Scan()
+	text := scanner.Text()
+	return strings.Split(text, " ")
 }

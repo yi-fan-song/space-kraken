@@ -1,7 +1,7 @@
 FROM ubuntu:16.04
 
 RUN apt update
-RUN DEBIAN_FRONTEND=noninteractive apt -y install file curl man vim git
+RUN DEBIAN_FRONTEND=noninteractive apt -y install file curl man vim git gcc
 
 
 WORKDIR /tmp
