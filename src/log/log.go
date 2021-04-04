@@ -17,7 +17,8 @@
  * along with space-kraken.  If not, see <https://www.gnu.org/licenses/>.
  **/
 
-package logger
+// Package log provides a logger client.
+package log
 
 import (
 	"fmt"
@@ -36,46 +37,36 @@ const (
 	White   = "\033[37m"
 )
 
-// Logger is the interface of the logger
-type Logger interface {
-	// Printf writes the message to the output
-	//
-	// messages are formatted using fmt.Fprintf
-	Printf(format string, a ...interface{})
-
-	// Info writes the message to the output
-	Info(...interface{})
-
-	// Infof writes teh message to output with format
-	Infof(format string, a ...interface{})
-
-	// Error writes the message to the output with error colors
-	//
-	// messages are formatted using fmt.Fprintln
-	Error(...interface{})
+// DefaultConfig holds default values
+var DefaultConfig = Config{
+	InfoColor:  Cyan,
+	ErrorColor: Red,
+	UseColor:   true,
 }
 
+// Config holds config info for the logger.
 type Config struct {
 	InfoColor  string
 	ErrorColor string
 	UseColor   bool
 }
 
-type logger struct {
+// Logger is the struct holding information on log location and format.
+type Logger struct {
 	outWriter io.Writer
 	errWriter io.Writer
 
-	infoFormat string
-	errFormat  string
+	printFormat string
+	infoFormat  string
+	errFormat   string
 }
 
 // New creates a new Logger.
-//
-// writers can be nil, in which case it will use stdout and stderr
 func New(outWriter io.Writer, errWriter io.Writer, config Config) Logger {
 	var (
-		infoFormat = "[%s] %s\n"
-		errFormat  = "[%s] ERROR: %s\n"
+		printFormat = "[%s] %s\n"
+		infoFormat  = "[%s] %s\n"
+		errFormat   = "[%s] ERROR: %s\n"
 	)
 
 	if config.UseColor {
@@ -83,34 +74,33 @@ func New(outWriter io.Writer, errWriter io.Writer, config Config) Logger {
 		errFormat = "[%s]" + config.ErrorColor + "ERROR: %s" + Reset + "\n"
 	}
 
-	return &logger{
-		outWriter:  outWriter,
-		errWriter:  errWriter,
-		infoFormat: infoFormat,
-		errFormat:  errFormat,
+	return Logger{
+		outWriter:   outWriter,
+		errWriter:   errWriter,
+		printFormat: printFormat,
+		infoFormat:  infoFormat,
+		errFormat:   errFormat,
 	}
 }
 
-func (l logger) Printf(format string, a ...interface{}) {
-	fmt.Fprintf(l.outWriter, l.infoFormat, getTime(), fmt.Sprintf(format, a...))
-}
-
-func (l logger) Info(a ...interface{}) {
+// Info logs info level to output.
+func (l Logger) Info(a ...interface{}) {
 	fmt.Fprintf(l.outWriter, l.infoFormat, getTime(), fmt.Sprint(a...))
 }
 
-func (l logger) Infof(format string, a ...interface{}) {
+// Infof logs info level to output with formatting.
+func (l Logger) Infof(format string, a ...interface{}) {
 	fmt.Fprintf(l.outWriter, l.infoFormat, getTime(), fmt.Sprintf(format, a...))
 }
 
-func (l logger) Error(a ...interface{}) {
+// Error logs error level to error output.
+func (l Logger) Error(a ...interface{}) {
 	fmt.Fprintf(l.errWriter, l.errFormat, getTime(), fmt.Sprint(a...))
 }
 
 func getTime() string {
 	loc, err := time.LoadLocation("America/Toronto")
 	if err != nil {
-		fmt.Printf("Failed to load location: %s\n", err.Error())
 		return ""
 	}
 	t := time.Now().In(loc)

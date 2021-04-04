@@ -24,77 +24,52 @@ import (
 	"io"
 	"net/http"
 
-	"github.com/yi-fan-song/space-kraken/logger"
+	"github.com/yi-fan-song/space-kraken/log"
 )
 
-// Client is a client for requests to the space traders api
+const (
+	// OkStatusMessage represents the message that the api will return when it is online
+	OkStatusMessage = "spacetraders is currently online and available to play"
+
+	BaseUrl = "https://api.spacetraders.io"
+)
+
+// Client is a client for the space traders api
 type Client struct {
-	token    string
 	username string
+	token    string
 
 	httpClient *http.Client
-	l          logger.Logger
+	logger     log.Logger
 }
 
 // New creates a new api client
-func New(token string, username string, httpClient *http.Client, l logger.Logger) Client {
+func New(username string, token string, httpClient *http.Client, logger log.Logger) Client {
 	return Client{
-		token:      token,
 		username:   username,
+		token:      token,
 		httpClient: httpClient,
-		l:          l,
+		logger:     logger,
 	}
 }
 
-// GetStatus gets the status of the game
-func (c Client) GetStatus() (status GameStatus, err error) {
-	c.l.Info("Fetching game Status...")
+// Headers is an alias for a map string->string
+type Headers map[string]string
 
-	url := "https://api.spacetraders.io/game/status"
-
-	req, err := http.NewRequest(http.MethodGet, url, nil)
-	if err != nil {
-		c.l.Error("Fetching failed: ", err)
-		return
-	}
-
-	res, err := c.httpClient.Do(req)
-	if err != nil {
-		c.l.Error("Fetching failed: ", err)
-		return
-	}
-
-	buf := make([]byte, 5000)
-	n, err := res.Body.Read(buf)
-	if err != nil && err != io.EOF {
-		c.l.Error("Fetching failed: ", err)
-		return
-	}
-	defer func() {
-		err := res.Body.Close()
-		if err != nil {
-			c.l.Error("Error occured but may not affect the output, ", err)
-		}
-	}()
-
-	err = json.Unmarshal(buf[:n], &status)
-	if err != nil {
-		c.l.Error("Fetching failed: ", err)
-		return
-	}
-
-	c.l.Info("Game status fetched:", status.Status)
-	return
-}
-
-// Do "do"es a request
-func (c Client) Do(url string, method string, body io.Reader, v interface{}) (err error) {
-	c.l.Infof("Making a %s request to url: %s", method, url)
+// Do does a request and parses the response into v, type of v should
+// correspond to expected response.
+//
+// If the api returns an error, a corresponding error will be returned.
+func (c Client) Do(url string, method string, body io.Reader, headers Headers, v interface{}) (err error) {
+	c.logger.Infof("Making a %s request to url: %s", method, url)
 
 	var req *http.Request
 	req, err = http.NewRequest(method, url, body)
 	if err != nil {
 		return
+	}
+	for key, val := range headers {
+		req.Header.Add(key, val)
 	}
 
 	var res *http.Response
@@ -111,7 +86,7 @@ func (c Client) Do(url string, method string, body io.Reader, v interface{}) (er
 	defer func() {
 		err := res.Body.Close()
 		if err != nil {
-			c.l.Error("Error occured but may not affect the output, ", err)
+			c.logger.Error("Error occured but may not affect the output, ", err)
 		}
 	}()
 
@@ -128,4 +103,19 @@ func (c Client) Do(url string, method string, body io.Reader, v interface{}) (er
 
 	err = json.Unmarshal(buf, v)
 	return
+}
+
+func createAuthHeader(token string) Headers {
+	return Headers{"Authorization": "Bearer " + token}
+}
+
+// HasAuth returns true if username and token is set
+func (c *Client) HasAuth() bool {
+	return c.username != "" && c.token != ""
+}
+
+// SetAuth sets username and token
+func (c *Client) SetAuth(username string, token string) {
+	c.username = username
+	c.token = token
 }

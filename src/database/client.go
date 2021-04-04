@@ -17,9 +17,29 @@
  * along with space-kraken.  If not, see <https://www.gnu.org/licenses/>.
  **/
 
-package api
+// Package database provides a client for sqlite database operations.
+package database
 
-// GameStatus is the struct for the get status response
-type GameStatus struct {
-	Status string `json:"status"`
+import (
+	"github.com/yi-fan-song/space-kraken/log"
+	"gorm.io/gorm"
+)
+
+// Client is the client for database operations.
+type Client struct {
+	db     *gorm.DB
+	logger log.Logger
+}
+
+// New creates a new database client.
+func New(db *gorm.DB, logger log.Logger) Client {
+	return Client{
+		db:     db,
+		logger: logger,
+	}
+}
+
+// MigrateModels creates all the necessary tables in the database
+func (c Client) MigrateModels() {
+	c.db.AutoMigrate(&User{})
 }

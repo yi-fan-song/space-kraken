@@ -1,5 +1,3 @@
-// +build terminal
-
 /**
  * Copyright (C) 2021 Yi Fan Song <yfsong00@gmail.com>
  *
@@ -32,7 +30,11 @@ import (
 
 	"github.com/komkom/toml"
 	"github.com/yi-fan-song/space-kraken/api"
-	"github.com/yi-fan-song/space-kraken/logger"
+	"github.com/yi-fan-song/space-kraken/database"
+	"github.com/yi-fan-song/space-kraken/log"
+	"gorm.io/driver/sqlite"
+	"gorm.io/gorm"
+	gormLogger "gorm.io/gorm/logger"
 )
 
 const (
@@ -43,24 +45,18 @@ const (
 )
 
 var (
-	l logger.Logger
+	logger log.Logger
 
 	httpClient http.Client
 	gameClient api.Client
+	dbClient   database.Client
 
 	settings Settings
 )
 
-// Settings is struct for parsing settings
-type Settings struct {
-	Logging struct {
-		Color bool `json:"color"`
-	} `json:"logging"`
-}
-
 func init() {
-	if _, err := os.Stat(configDir); os.IsNotExist(err) {
-		os.Mkdir(configDir, 755)
+	if _, err := os.Stat(configDir); errors.Is(err, os.ErrNotExist) {
+		os.Mkdir(configDir, 0755)
 	}
 
 	err := loadSettings(configPath, &settings)
@@ -69,20 +65,54 @@ func init() {
 	}
 
 	logfile := createLogfile(logPath)
-	l = logger.New(logfile, logfile, logger.Config{
-		ErrorColor: logger.Red,
-		InfoColor:  logger.Cyan,
+	logger = log.New(logfile, logfile, log.Config{
+		ErrorColor: log.Red,
+		InfoColor:  log.Cyan,
 		UseColor:   settings.Logging.Color,
 	})
 
-	httpClient = http.Client{Timeout: time.Minute}
-	gameClient = api.New("", "", &httpClient, l)
+	gLogger := gormLogger.New(PrintFormater{logger}, gormLogger.Config{
+		SlowThreshold: 200 * time.Millisecond,
+		LogLevel:      gormLogger.Warn,
+		Colorful:      settings.Logging.Color,
+	})
 
-	dbInit()
+	db, err := gorm.Open(sqlite.Open(dataPath), &gorm.Config{Logger: gLogger})
+	if err != nil {
+		panic("failed to connect database")
+	}
+
+	dbClient = database.New(db, logger)
+	dbClient.MigrateModels()
+	user := dbClient.FetchUser()
+
+	httpClient = http.Client{Timeout: time.Minute}
+	gameClient = api.New(user.Username, user.Token, &httpClient, logger)
+}
+
+func main() {
+	waitWhileOffline()
+	startPrompts()
+}
+
+// Settings is struct for parsing settings
+type Settings struct {
+	Logging struct {
+		Color bool   `json:"color"`
+		Level string `json:"level"`
+	} `json:"logging"`
+}
+
+type PrintFormater struct {
+	log.Logger
+}
+
+func (l PrintFormater) Printf(format string, a ...interface{}) {
+	l.Infof(format, a...)
 }
 
 func createLogfile(filename string) *os.File {
-	f, err := os.OpenFile(filename, os.O_CREATE|os.O_RDWR|os.O_APPEND, 755)
+	f, err := os.OpenFile(filename, os.O_CREATE|os.O_RDWR|os.O_APPEND, 0755)
 	if err != nil {
 		fmt.Printf("Could not create log file: %s.\n", err)
 		return nil
@@ -99,7 +129,9 @@ func loadSettings(path string, settings *Settings) error {
 			if err != nil {
 				return err
 			}
-			f.Chmod(644)
+			if err := f.Chmod(0644); err != nil {
+				return err
+			}
 			return loadSettings(f.Name(), settings)
 		}
 		return err
@@ -116,9 +148,9 @@ func loadSettings(path string, settings *Settings) error {
 func waitWhileOffline() {
 	fmt.Println("Checking api status")
 	for {
-		status, err := gameClient.GetStatus()
+		status, err := gameClient.FetchStatus()
 		if err != nil {
-			l.Error(err)
+			logger.Error(err)
 		}
 		if status.Status == api.OkStatusMessage {
 			fmt.Println("api is online, the game is available to play")
@@ -128,9 +160,4 @@ func waitWhileOffline() {
 		fmt.Println("Waiting for api to come online")
 		time.Sleep(time.Second * 30)
 	}
-}
-
-func main() {
-	waitWhileOffline()
-	startPrompts()
 }

@@ -17,7 +17,48 @@
  * along with space-kraken.  If not, see <https://www.gnu.org/licenses/>.
  **/
 
-package api
+package database
 
-// OkStatusMessage represents the message that the api will return when it is online
-const OkStatusMessage = "spacetraders is currently online and available to play"
+import (
+	"errors"
+
+	"gorm.io/gorm"
+)
+
+type User struct {
+	gorm.Model
+	Username string
+	Token    string
+}
+
+func (c Client) FetchUser() User {
+	var user User
+	tx := c.db.First(&user)
+	if errors.Is(tx.Error, gorm.ErrRecordNotFound) {
+		return User{}
+	}
+	if tx.Error != nil {
+		c.logger.Error(tx.Error)
+	}
+	return user
+}
+
+func (c Client) UpdateOrCreateUser(username string, token string) error {
+	var user User
+	tx := c.db.First(&user)
+	if errors.Is(tx.Error, gorm.ErrRecordNotFound) {
+		c.db.Create(&User{
+			Username: username,
+			Token:    token,
+		})
+	} else if tx.Error != nil {
+		c.logger.Error(tx.Error)
+		return tx.Error
+	} else {
+		c.db.Model(&user).Updates(User{
+			Username: username,
+			Token:    token,
+		})
+	}
+	return nil
+}
