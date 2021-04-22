@@ -22,7 +22,7 @@ $ docker build -t space-kraken .
 ```bash
 $ docker run --rm -it \
 	-p 8000:8000 \
-	-v $PWD/src:/root/space-kraken \
+	-v $PWD:/root/space-kraken \
 	-w /root/space-kraken \
 	--name space-kraken \
 	space-kraken:latest
